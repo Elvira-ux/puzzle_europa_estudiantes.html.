@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitxa 2: Europa - Països i Capitals (Aula Kids)</title>
+    
+    <!-- Scripts Externs (CDNs) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson@3"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        /* Estils per al scrollbar del panell lateral */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .country-target {
+            transition: fill 0.2s ease;
+        }
+        
+        /* Animació per a la victòria */
+        .victory-zoom {
+            animation: zoomIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes zoomIn {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- DADES DE CONFIGURACIÓ ---
+        const REGIONES_COLORS = {
+            "Escandinàvia": "#bae6fd",
+            "Bàltics": "#ddd6fe",
+            "Europa Occidental": "#fef08a",
+            "Europa Central": "#bbf7d0",
+            "Europa Oriental": "#fed7aa",
+            "Balcans": "#fecaca",
+            "Europa del Sud": "#f9a8d4",
+            "Caucas": "#cbd5e1"
+        };
+
+        const PAISES_FICHA = {
+            "Albania": { num: 1, display: "Albània", capital: "Tirana", iso: "al", region: "Balcans" },
+            "Germany": { num: 2, display: "Alemanya", capital: "Berlín", iso: "de", region: "Europa Central" },
+            "Andorra": { num: 3, display: "Andorra", capital: "Andorra la Vella", iso: "ad", region: "Europa del Sud" },
+            "Armenia": { num: 4, display: "Armènia", capital: "Erevan", iso: "am", region: "Caucas" },
+            "Austria": { num: 5, display: "Àustria", capital: "Viena", iso: "at", region: "Europa Central" },
+            "Azerbaijan": { num: 6, display: "Azerbaidjan", capital: "Bakú", iso: "az", region: "Caucas" },
+            "Belgium": { num: 7, display: "Bèlgica", capital: "Brussel·les", iso: "be", region: "Europa Occidental" },
+            "Belarus": { num: 8, display: "Bielorússia", capital: "Minsk", iso: "by", region: "Europa Oriental" },
+            "Bosnia and Herz.": { num: 9, display: "Bòsnia i Hercegovina", capital: "Sarajevo", iso: "ba", region: "Balcans" },
+            "Bulgaria": { num: 10, display: "Bulgària", capital: "Sofia", iso: "bg", region: "Balcans" },
+            "Croatia": { num: 11, display: "Croàcia", capital: "Zagreb", iso: "hr", region: "Balcans" },
+            "Denmark": { num: 12, display: "Dinamarca", capital: "Copenhaguen", iso: "dk", region: "Escandinàvia" },
+            "Slovakia": { num: 13, display: "Eslovàquia", capital: "Bratislava", iso: "sk", region: "Europa Central" },
+            "Slovenia": { num: 14, display: "Eslovènia", capital: "Ljubliana", iso: "si", region: "Europa Central" },
+            "Spain": { num: 15, display: "Espanya", capital: "Madrid", iso: "es", region: "Europa del Sud" },
+            "Estonia": { num: 16, display: "Estònia", capital: "Tallinn", iso: "ee", region: "Bàltics" },
+            "Finland": { num: 17, display: "Finlàndia", capital: "Hèlsinki", iso: "fi", region: "Escandinàvia" },
+            "France": { num: 18, display: "França", capital: "París", iso: "fr", region: "Europa Occidental" },
+            "Georgia": { num: 19, display: "Geòrgia", capital: "Tbilisi", iso: "ge", region: "Caucas" },
+            "United Kingdom": { num: 20, display: "Regne Unit", capital: "Londres", iso: "gb", region: "Europa Occidental" },
+            "Greece": { num: 21, display: "Grècia", capital: "Atenes", iso: "gr", region: "Europa del Sud" },
+            "Hungary": { num: 22, display: "Hongria", capital: "Budapest", iso: "hu", region: "Europa Central" },
+            "Ireland": { num: 23, display: "Irlanda", capital: "Dublín", iso: "ie", region: "Europa Occidental" },
+            "Iceland": { num: 24, display: "Islàndia", capital: "Reykjavík", iso: "is", region: "Escandinàvia" },
+            "Italy": { num: 25, display: "Itàlia", capital: "Roma", iso: "it", region: "Europa del Sud" },
+            "Kazakhstan": { num: 26, display: "Kazakhstan", capital: "Astanà", iso: "kz", region: "Europa Oriental" },
+            "Latvia": { num: 27, display: "Letònia", capital: "Riga", iso: "lv", region: "Bàltics" },
+            "Liechtenstein": { num: 28, display: "Liechtenstein", capital: "Vaduz", iso: "li", region: "Europa Central" },
+            "Lithuania": { num: 29, display: "Lituània", capital: "Vílnius", iso: "lt", region: "Bàltics" },
+            "Luxembourg": { num: 30, display: "Luxemburg", capital: "Luxemburg", iso: "lu", region: "Europa Occidental" },
+            "Macedonia": { num: 31, display: "Macedònia", capital: "Skopje", iso: "mk", region: "Balcans" },
+            "Malta": { num: 32, display: "Malta", capital: "La Valletta", iso: "mt", region: "Europa del Sud" },
+            "Moldova": { num: 33, display: "Moldàvia", capital: "Kixinau", iso: "md", region: "Europa Oriental" },
+            "Monaco": { num: 34, display: "Mònaco", capital: "Mònaco", iso: "mc", region: "Europa del Sud" },
+            "Montenegro": { num: 35, display: "Montenegro", capital: "Podgorica", iso: "me", region: "Balcans" },
+            "Norway": { num: 36, display: "Noruega", capital: "Oslo", iso: "no", region: "Escandinàvia" },
+            "Netherlands": { num: 37, display: "Països Baixos", capital: "Amsterdam", iso: "nl", region: "Europa Occidental" },
+            "Poland": { num: 38, display: "Polònia", capital: "Varsòvia", iso: "pl", region: "Europa Central" },
+            "Portugal": { num: 39, display: "Portugal", capital: "Lisboa", iso: "pt", region: "Europa del Sud" },
+            "Romania": { num: 40, display: "Romania", capital: "Bucarest", iso: "ro", region: "Balcans" },
+            "Russia": { num: 41, display: "Rússia", capital: "Moscou", iso: "ru", region: "Europa Oriental" },
+            "Czech Rep.": { num: 42, display: "República Txeca", capital: "Praga", iso: "cz", region: "Europa Central" },
+            "San Marino": { num: 43, display: "San Marino", capital: "San Marino", iso: "sm", region: "Europa del Sud" },
+            "Serbia": { num: 44, display: "Sèrbia", capital: "Belgrad", iso: "rs", region: "Balcans" },
+            "Sweden": { num: 45, display: "Suècia", capital: "Estocolm", iso: "se", region: "Escandinàvia" },
+            "Switzerland": { num: 46, display: "Suïssa", capital: "Berna", iso: "ch", region: "Europa Central" },
+            "Turkey": { num: 47, display: "Turquia", capital: "Ankara", iso: "tr", region: "Europa del Sud" },
+            "Ukraine": { num: 48, display: "Ucraïna", capital: "Kíiv", iso: "ua", region: "Europa Oriental" },
+            "Vatican": { num: 49, display: "Vaticà", capital: "Ciutat del Vaticà", iso: "va", region: "Europa del Sud" },
+            "Cyprus": { num: 50, display: "Xipre", capital: "Nicòsia", iso: "cy", region: "Europa del Sud" }
+        };
+
+        // --- MOTOR DE SO ---
+        const SoundEngine = {
+            ctx: null,
+            init() { if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)(); },
+            playPop() {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.1);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+            },
+            playSuccess() {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.05);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.2);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.2);
+            },
+            playFanfare() {
+                this.init();
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + (i * 0.1));
+                    gain.gain.setValueAtTime(0, this.ctx.currentTime + (i * 0.1));
+                    gain.gain.linearRampToValueAtTime(0.1, this.ctx.currentTime + (i * 0.1) + 0.05);
+                    gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1.5);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(this.ctx.currentTime + (i * 0.1)); osc.stop(this.ctx.currentTime + 1.5);
+                });
+            }
+        };
+
+        // --- COMPONENT PRINCIPAL ---
+        const App = () => {
+            const [loading, setLoading] = useState(true);
+            const [score, setScore] = useState(0);
+            const [total, setTotal] = useState(50);
+            const [pieces, setPieces] = useState([]);
+            const [solved, setSolved] = useState(new Set());
+            const [victory, setVictory] = useState(false);
+            const [difficulty, setDifficulty] = useState('facil');
+            
+            const svgRef = useRef(null);
+            const mapGroupRef = useRef(null);
+            const zoomRef = useRef(null);
+            const projectionRef = useRef(null);
+            const pathRef = useRef(null);
+
+            useEffect(() => {
+                const init = async () => {
+                    try {
+                        const response = await fetch('https://raw.githubusercontent.com/leakyMirror/map-of-europe/master/TopoJSON/europe.topojson');
+                        const topology = await response.json();
+                        const geojson = topojson.feature(topology, topology.objects.europe);
+                        const countries = geojson.features.filter(f => PAISES_FICHA[f.properties.NAME || f.properties.name]);
+                        const sortedPieces = countries.sort((a, b) => PAISES_FICHA[a.properties.NAME || a.properties.name].num - PAISES_FICHA[b.properties.NAME || b.properties.name].num);
+                        
+                        setPieces(sortedPieces);
+                        setTimeout(() => renderMap(geojson, countries), 100);
+                        setLoading(false);
+                    } catch (err) {
+                        alert("Error carregant el mapa. Comprova la connexió.");
+                    }
+                };
+                init();
+            }, []);
+
+            const renderMap = (fullGeojson, countries) => {
+                if (!svgRef.current) return;
+                const width = svgRef.current.clientWidth;
+                const height = svgRef.current.clientHeight;
+                const svg = d3.select(svgRef.current);
+                svg.selectAll("*").remove();
+                
+                const g = svg.append("g");
+                mapGroupRef.current = g;
+
+                const zoomBehavior = d3.zoom().scaleExtent([1, 15]).on("zoom", (e) => g.attr("transform", e.transform));
+                svg.call(zoomBehavior);
+                zoomRef.current = zoomBehavior;
+
+                const projection = d3.geoMercator().fitSize([width * 0.95, height * 0.9], fullGeojson);
+                projectionRef.current = projection;
+                pathRef.current = d3.geoPath().projection(projection);
+
+                g.selectAll("path")
+                    .data(countries)
+                    .enter()
+                    .append("path")
+                    .attr("d", pathRef.current)
+                    .attr("fill", d => REGIONES_COLORS[PAISES_FICHA[d.properties.NAME || d.properties.name].region])
+                    .attr("stroke", "#fff")
+                    .attr("stroke-width", "0.5")
+                    .attr("class", "country-target cursor-move")
+                    .on("dragover", (e) => e.preventDefault())
+                    .on("drop", function(e, d) {
+                        e.preventDefault();
+                        const droppedId = e.dataTransfer.getData("text/plain");
+                        const targetId = (d.properties.NAME || d.properties.name).replace(/\s+/g, '-').toLowerCase();
+                        if (droppedId === targetId) handleCorrectDrop(d, d3.select(this));
+                        else {
+                            d3.select(this).attr("fill", "#fca5a5");
+                            setTimeout(() => {
+                                const tech = d.properties.NAME || d.properties.name;
+                                if (!solved.has(tech.replace(/\s+/g, '-').toLowerCase()))
+                                    d3.select(this).attr("fill", REGIONES_COLORS[PAISES_FICHA[tech].region]);
+                            }, 500);
+                        }
+                    });
+            };
+
+            const handleCorrectDrop = (feature, pathElement) => {
+                const techName = feature.properties.NAME || feature.properties.name;
+                const countryData = PAISES_FICHA[techName];
+                const safeId = techName.replace(/\s+/g, '-').toLowerCase();
+                if (solved.has(safeId)) return;
+
+                SoundEngine.playSuccess();
+                setSolved(prev => new Set(prev).add(safeId));
+                setScore(s => s + 1);
+
+                pathElement.transition().duration(400).attr("fill", "#2563eb").attr("stroke", "#1d4ed8").attr("stroke-width", "1");
+
+                const centroid = pathRef.current.centroid(feature);
+                if (!isNaN(centroid[0])) {
+                    const g = mapGroupRef.current.append("g").attr("class", "pointer-events-none");
+                    g.append("text").attr("x", centroid[0]).attr("y", centroid[1] - 2).attr("text-anchor", "middle").attr("class", "text-[8px] fill-white font-black").style("text-shadow", "0 1px 2px black").text(countryData.num);
+                    g.append("text").attr("x", centroid[0]).attr("y", centroid[1] + 6).attr("text-anchor", "middle").attr("class", "text-[5px] fill-white font-bold").style("text-shadow", "0 1px 2px black").text(countryData.display);
+                }
+            };
+
+            const handleZoom = (type) => {
+                if (!zoomRef.current || !svgRef.current) return;
+                const svg = d3.select(svgRef.current);
+                if (type === 'in') svg.transition().duration(300).call(zoomRef.current.scaleBy, 1.5);
+                else if (type === 'out') svg.transition().duration(300).call(zoomRef.current.scaleBy, 0.6);
+                else svg.transition().duration(500).call(zoomRef.current.transform, d3.zoomIdentity);
+            };
+
+            useEffect(() => { 
+                if (score > 0 && score === total) { 
+                    setVictory(true); SoundEngine.playFanfare(); 
+                } 
+            }, [score]);
+
+            const onDragStart = (e, feature) => {
+                SoundEngine.init(); 
+                SoundEngine.playPop();
+                const name = feature.properties.NAME || feature.properties.name;
+                e.dataTransfer.setData("text/plain", name.replace(/\s+/g, '-').toLowerCase());
+            };
+
+            return (
+                <div className="flex h-screen w-full bg-slate-100 overflow-hidden">
+                    {loading && (
+                        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
+                            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                            <p className="text-slate-800 font-black uppercase tracking-tighter">Preparant fitxa escolar...</p>
+                        </div>
+                    )}
+
+                    <div className="flex-grow flex flex-col relative">
+                        <header className="p-4 bg-white border-b border-slate-200 flex justify-between items-center z-10 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-blue-600 text-white px-3 py-1 rounded-lg font-black shadow-lg">50</div>
+                                <div>
+                                    <h1 className="text-xl font-black text-slate-900 tracking-tighter leading-none">FITXA 2 - EUROPA</h1>
+                                    <div className="flex gap-2 mt-2">
+                                        <button onClick={() => setDifficulty('facil')} className={`px-4 py-1 rounded-full text-[10px] font-black uppercase transition-all ${difficulty === 'facil' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>Fàcil</button>
+                                        <button onClick={() => setDifficulty('dificil')} className={`px-4 py-1 rounded-full text-[10px] font-black uppercase transition-all ${difficulty === 'dificil' ? 'bg-red-600 text-white shadow-md' : 'bg-slate-100 text-slate-400'}`}>Difícil</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-slate-900 text-white px-6 py-2 rounded-xl flex items-center gap-2 shadow-xl border-b-4 border-blue-600">
+                                <span className="text-3xl font-mono font-black">{score} / {total}</span>
+                            </div>
+                        </header>
+                        
+                        <main className="flex-grow relative flex items-center justify-center bg-white/60 backdrop-blur-sm overflow-hidden">
+                            <div className="absolute top-4 right-4 bg-white/80 p-3 rounded-xl border border-slate-200 text-[9px] font-bold space-y-1 shadow-sm hidden md:block">
+                                <p className="text-slate-400 uppercase mb-2 tracking-widest text-center tracking-tighter">Regions</p>
+                                {Object.entries(REGIONES_COLORS).map(([name, color]) => (
+                                    <div key={name} className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
+                                        <span className="text-slate-700">{name}</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="absolute bottom-8 left-8 flex flex-col gap-2 z-30">
+                                <button onClick={() => handleZoom('in')} className="w-12 h-12 bg-white hover:bg-slate-50 text-slate-800 font-black text-2xl rounded-xl shadow-xl border-2 border-slate-200 flex items-center justify-center transition-transform active:scale-90">+</button>
+                                <button onClick={() => handleZoom('out')} className="w-12 h-12 bg-white hover:bg-slate-50 text-slate-800 font-black text-2xl rounded-xl shadow-xl border-2 border-slate-200 flex items-center justify-center transition-transform active:scale-90">-</button>
+                                <button onClick={() => handleZoom('reset')} className="w-12 h-12 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-xl flex items-center justify-center transition-transform active:scale-90 uppercase tracking-tighter">Fix</button>
+                            </div>
+                            <svg ref={svgRef} className="w-full h-full drop-shadow-2xl" />
+                        </main>
+
+                        {victory && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-blue-900/40 backdrop-blur-xl z-40">
+                                <div className="bg-white p-12 rounded-[2.5rem] text-center border-8 border-blue-500 shadow-2xl victory-zoom">
+                                    <div className="text-6xl mb-4">🏆</div>
+                                    <h2 className="text-5xl font-black text-blue-900 mb-2 italic uppercase">Excel·lent!</h2>
+                                    <p className="text-xl text-slate-600 font-bold mb-8 uppercase tracking-tighter">Has completat els 50 països de la fitxa.</p>
+                                    <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black text-xl hover:bg-blue-700 shadow-xl transition-all active:scale-95">TORNA A JUGAR</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <aside className="w-80 md:w-[420px] bg-white border-l border-slate-200 shadow-2xl flex flex-col z-20">
+                        <div className="p-5 bg-slate-50 border-b border-slate-200">
+                            <h2 className="font-black text-slate-900 text-sm flex items-center gap-2 uppercase tracking-tighter">Banc de Països</h2>
+                            <p className="text-[10px] text-blue-600 font-black mt-1 uppercase tracking-tighter">
+                                {difficulty === 'facil' ? 'Mode Fàcil: El nom és visible' : 'Mode Difícil: De quin país és la capital?'}
+                            </p>
+                        </div>
+                        
+                        <div className="flex-grow overflow-y-auto p-4 space-y-2 bg-slate-50/30 custom-scrollbar">
+                            {pieces.map((p) => {
+                                const name = p.properties.NAME || p.properties.name;
+                                const data = PAISES_FICHA[name];
+                                const isS = solved.has(name.replace(/\s+/g, '-').toLowerCase());
+                                return (
+                                    <div key={name} draggable={!isS} onDragStart={(e) => onDragStart(e, p)}
+                                        className={`flex items-center gap-4 p-3 rounded-xl border-2 transition-all cursor-grab active:cursor-grabbing ${isS ? "bg-blue-50 border-blue-100 opacity-60 shadow-inner" : "bg-white border-slate-100 hover:border-blue-500 hover:shadow-lg"}`}>
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg ${isS ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"}`}>{data.num}</div>
+                                        <div className="flex-grow min-w-0">
+                                            <div className="font-black text-sm truncate uppercase text-slate-800 flex items-center gap-2">
+                                                <span>{isS || difficulty === 'facil' ? data.display : '??????'}</span>
+                                                <img 
+                                                    src={`https://flagcdn.com/w40/${data.iso}.png`} 
+                                                    srcSet={`https://flagcdn.com/w80/${data.iso}.png 2x`}
+                                                    width="24" 
+                                                    alt={data.display}
+                                                    className="rounded-sm shadow-sm border border-slate-200 ml-1"
+                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                />
+                                            </div>
+                                            <div className={`text-[10px] font-bold ${difficulty === 'dificil' && !isS ? 'text-red-500 text-sm' : 'text-blue-500'} uppercase leading-none mt-1`}>
+                                                {data.capital}
+                                            </div>
+                                            <div className="text-[8px] text-slate-400 mt-1 uppercase font-bold flex items-center gap-1">
+                                                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: REGIONES_COLORS[data.region] }}></div>
+                                                {data.region}
+                                            </div>
+                                        </div>
+                                        {isS && <div className="text-blue-600 font-black text-xl animate-bounce">✓</div>}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* SECCIÓ DE MARCA I CONTACTE - AULA KIDS */}
+                        <div className="p-4 bg-sky-600 text-white border-t border-sky-700">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-sky-600 font-black text-xs shadow-md">AK</div>
+                                <div>
+                                    <h3 className="text-sm font-black uppercase tracking-tight leading-none">Aula Kids</h3>
+                                    <p className="text-[9px] opacity-80 font-bold uppercase tracking-wider mt-1">Material Educatiu Digital</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 mt-3">
+                                <div className="flex items-center gap-2 text-[9px] font-bold">
+                                    <div className="bg-sky-500 p-1 rounded-md">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                    </div>
+                                    <a href="mailto:aulakids513@gmail.com" className="hover:underline">aulakids513@gmail.com</a>
+                                </div>
+                                <div className="flex items-center gap-2 text-[9px] font-bold">
+                                    <div className="bg-sky-500 p-1 rounded-md">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path></svg>
+                                    </div>
+                                    <span>602 02 61 19</span>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
